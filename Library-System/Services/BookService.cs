@@ -5,14 +5,15 @@ using Library_System.Models;
 using Library_System.Utils;
 using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.EntityFrameworkCore;
 
 namespace Library_System.Services;
 
 public class BookService
 {
-    private IMapper _mapper;
-    private LibraryDbContext _context;
-    private readonly Action<JsonPatchError> ModelState;
+    private readonly IMapper _mapper;
+    private readonly LibraryDbContext _context;
 
     public BookService(IMapper mapper, LibraryDbContext context)
     {
@@ -20,55 +21,93 @@ public class BookService
         _context = context;
     }
 
-    public IActionResult RegisterBook(CreateBookDto dto)
+    public async Task<BookModel> RegisterBook(CreateBookDto dto)
     {
         BookModel bookModel = _mapper.Map<BookModel>(dto);
 
         _context.Books.Add(bookModel);
         _context.SaveChanges();
 
-        return (IActionResult)dto;
+        return bookModel;
     }
 
-    public IEnumerable<ReadBookDto> ReadBooks([FromQuery] int skip = 0, [FromQuery] int take = 35)
+    public async Task<List<BookModel>> ReadBooks(int skip, int take)
     {
-        return _mapper.Map<List<ReadBookDto>>(_context.Books.Skip(skip).Take(take).ToList());
+        return await _context.Books.Skip(skip).Take(take).ToListAsync();
     }
 
-    public  ReadBookResult ReadBookForId(Guid id)
+    public async Task<ReadBookDto> ReadBookForId(Guid id)
     {
-        var book = _context.Books.FirstOrDefault(book => book.Id == id);
+        var book = await _context.Books.FirstOrDefaultAsync(x => x.Id == id);
+        var dto = _mapper.Map<ReadBookDto>(book);
+
+        return dto;
+    }
+
+    public async Task<ReadBookResult> UpdateBook(Guid id, UpdateBookDto bookDto)
+    {
+        var book = await _context.Books.FindAsync(id);
         if (book == null)
         {
             return new ReadBookResult { IsSuccess = false, ErrorMessage = "Book not found" };
         }
-        var bookDto = _mapper.Map<ReadBookDto>(book);
-        return new ReadBookResult { IsSuccess = true, Book = bookDto };
 
-    }
-
-    public ReadBookResult UpdateBook(Guid id, [FromBody] UpdateBookDto bookDto)
-    {
-        var book = _context.Books.FirstOrDefault(book => book.Id == id);
-        if(book == null)
-        {
-            return new ReadBookResult { IsSuccess = false, ErrorMessage = "Book not found" };
-        }
         _mapper.Map(bookDto, book);
-        _context.SaveChanges();
-        return new ReadBookResult { IsSuccess = true};
 
+        try
+        {
+            await _context.SaveChangesAsync();
+            return new ReadBookResult { IsSuccess = true };
+        }
+        catch (Exception ex)
+        {
+            return new ReadBookResult { IsSuccess = false, ErrorMessage = ex.Message };
+        }
     }
 
-    public ReadBookResult DeleteBook(Guid id)
+    public async Task<ReadBookResult> UpdateFilmeParcial(Guid id, JsonPatchDocument<UpdateBookDto> patch)
+    {
+        var book = await _context.Books.FindAsync(id);
+
+        if (book == null)
+        {
+            return new ReadBookResult { IsSuccess = false, ErrorMessage = "Filme not found" };
+        }
+
+        var BookToUpdate = _mapper.Map<UpdateBookDto>(book);
+        patch.ApplyTo(BookToUpdate, ModelState);
+
+        var modelState = new ModelStateDictionary();
+
+        if (!TryValidateModel(BookToUpdate))
+        {
+            return new ReadBookResult { IsSuccess = false, ErrorMessage = "Invalid model" };
+        }
+
+        _mapper.Map(BookToUpdate, book);
+
+        try
+        {
+            await _context.SaveChangesAsync();
+            return new ReadBookResult { IsSuccess = true };
+        }
+        catch (Exception ex)
+        {
+            return new ReadBookResult { IsSuccess = false, ErrorMessage = ex.Message };
+        }
+    }
+
+
+
+    public async Task<bool> DeleteBook(Guid id)
     {
         var book = _context.Books.FirstOrDefault(_book => _book.Id == id);
-        if (book == null) return new ReadBookResult { IsSuccess = false, ErrorMessage = "Book not found" };
+        if (book == null) throw new Exception($"Book with this id {id} is not found");
 
-        _context.Remove(book);
+        _context.Books.Remove(book);
         _context.SaveChanges();
-        return new ReadBookResult { IsSuccess = true };
 
+        return true;
     } 
     
 }
