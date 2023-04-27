@@ -65,40 +65,6 @@ public class BookService
         }
     }
 
-    public async Task<ReadBookResult> UpdateFilmeParcial(Guid id, JsonPatchDocument<UpdateBookDto> patch)
-    {
-        var book = await _context.Books.FindAsync(id);
-
-        if (book == null)
-        {
-            return new ReadBookResult { IsSuccess = false, ErrorMessage = "Filme not found" };
-        }
-
-        var BookToUpdate = _mapper.Map<UpdateBookDto>(book);
-        patch.ApplyTo(BookToUpdate, ModelState);
-
-        var modelState = new ModelStateDictionary();
-
-        if (!TryValidateModel(BookToUpdate))
-        {
-            return new ReadBookResult { IsSuccess = false, ErrorMessage = "Invalid model" };
-        }
-
-        _mapper.Map(BookToUpdate, book);
-
-        try
-        {
-            await _context.SaveChangesAsync();
-            return new ReadBookResult { IsSuccess = true };
-        }
-        catch (Exception ex)
-        {
-            return new ReadBookResult { IsSuccess = false, ErrorMessage = ex.Message };
-        }
-    }
-
-
-
     public async Task<bool> DeleteBook(Guid id)
     {
         var book = _context.Books.FirstOrDefault(_book => _book.Id == id);
